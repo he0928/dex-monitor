@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEX 퍼프 시장가 체결 스프레드 모니터</title>
+<style>
+  :root{
+    --bg: #0E0E14;
+    --panel: #17171F;
+    --panel-2: #1D1D28;
+    --line: #2A2A38;
+    --text: #EDEDF2;
+    --muted: #8B8B9E;
+    --amber: #E8A33D;
+    --cyan: #4FD1C5;
+    --green: #4ADE80;
+    --red: #F87171;
+    --mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: -apple-system, 'Inter', 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    padding: 20px;
+    min-height: 100vh;
+  }
+  .wrap{ max-width: 980px; margin: 0 auto; }
+
+  .global-top{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom: 18px; gap: 12px; flex-wrap: wrap;
+  }
+  .global-title{ font-size: 11px; letter-spacing: 0.02em; color: var(--muted); margin: 0; }
+  .controls{ display:flex; align-items:center; gap: 10px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  select, button{
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; font-family: var(--sans); cursor: pointer;
+  }
+  button:hover, select:hover{ border-color: #40405A; }
+  button:active{ transform: scale(0.97); }
+
+  .asset-block{ margin-bottom: 0; }
+
+  #assets{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+  @media (max-width: 820px){
+    #assets{ grid-template-columns: 1fr; }
+    .asset-block{ padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+    .asset-block:last-child{ border-bottom: none; }
+  }
+
+  .top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 14px; gap: 12px; }
+  .asset{ font-size: 17px; font-weight: 700; margin: 0; font-family: var(--mono); }
+  .status{ display:flex; align-items:center; gap:8px; font-size: 10px; color: var(--muted); }
+  .dot{ width:7px; height:7px; border-radius:50%; background: var(--muted); transition: background 0.3s; }
+  .dot.live{ background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.err{ background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .cards{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .card{ background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; position: relative; overflow: hidden; }
+  .card.a{ border-top: 2px solid var(--amber); }
+  .card.b{ border-top: 2px solid var(--cyan); }
+  .card-label{ font-size: 10px; color: var(--muted); display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
+  .card-label a{ color: var(--muted); text-decoration:none; border-bottom: 1px dotted var(--line); }
+  .card-label a:hover{ color: var(--text); }
+  .exch-name{ font-weight:600; }
+  .card.a .exch-name{ color: var(--amber); }
+  .card.b .exch-name{ color: var(--cyan); }
+
+  .quote-row{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px; }
+  .quote-label{ font-size: 9px; color: var(--muted); }
+  .quote-price{ font-family: var(--mono); font-size: 14px; font-weight: 700; }
+  .quote-price.ask{ color: var(--red); }
+  .quote-price.bid{ color: var(--green); }
+  .quote-hint{ font-size: 8px; color: var(--muted); margin-top: 2px; }
+
+  .spread-panel{ background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 18px; text-align: center; }
+  .spread-label{ font-size: 10px; color: var(--muted); margin-bottom: 8px; }
+  .spread-value{ font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .spread-value.up{ color: var(--green); }
+  .spread-value.down{ color: var(--red); }
+  .spread-sub{ font-size: 11px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+  .spread-sub b{ color: var(--text); font-weight: 600; }
+  .spread-alt{ font-size: 11px; color: var(--muted); margin-top: 10px; font-family: var(--mono); border-top: 1px solid var(--line); padding-top: 10px; }
+  .spread-avg{ font-size: 9px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+  .spread-avg b{ color: var(--text); font-weight: 600; }
+
+  canvas.hist{ width: 100%; height: 50px; display:block; margin-top: 12px; }
+
+  .err-box{
+    display:none; background: #2A1414; border: 1px solid #5A2323; color: #F0A0A0;
+    font-size: 12px; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;
+    font-family: var(--mono); line-height: 1.5;
+  }
+
+  .divider{ border: none; border-top: 1px solid var(--line); margin: 0 0 28px 0; }
+
+  .calc-panel{ background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 12px; }
+  .calc-title{ font-size: 10px; color: var(--muted); margin-bottom: 12px; }
+  .calc-leg{ display:grid; grid-template-columns: 70px 60px 1fr 1fr; gap: 8px; align-items:center; margin-bottom: 8px; }
+  .calc-leg span{ font-size: 10px; font-weight: 600; }
+  .calc-leg.a span{ color: var(--amber); }
+  .calc-leg.b span{ color: var(--cyan); }
+  .calc-leg select, .calc-leg input{
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 8px; font-size: 16px; font-family: var(--mono); width: 100%;
+  }
+  .calc-leg input::placeholder{ color: var(--muted); font-family: var(--sans); }
+  .calc-result{ font-size: 10px;
+    margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line);
+    text-align:center; font-size: 12px; color: var(--muted);
+  }
+  .calc-pnl{ font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  .calc-pnl.up{ color: var(--green); }
+  .calc-pnl.down{ color: var(--red); }
+  .calc-detail{ font-size: 9px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+
+  .gap-row{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 6px; font-size: 10px; }
+  .gap-row .quote-price{ font-size: 12px; }
+  .quote-price.up{ color: var(--green); }
+  .quote-price.down{ color: var(--red); }
+
+  @media (max-width: 480px){
+    .cards{ grid-template-columns: 1fr; }
+    .spread-value{ font-size: 28px; }
+    .asset{ font-size: 19px; }
+    .calc-leg{ grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="global-top">
+    <p class="global-title">DEX 퍼프 시장가 체결 스프레드 · Variational ↔ Lighter</p>
+    <div class="controls">
+      <span>갱신 주기</span>
+      <select id="intervalSel">
+        <option value="3000">3초</option>
+        <option value="5000" selected>5초</option>
+        <option value="10000">10초</option>
+        <option value="30000">30초</option>
+      </select>
+      <button id="refreshBtn">지금 새로고침</button>
+    </div>
+  </div>
+
+  <div id="assets"></div>
+
+</div>
+
+<script>
+(function(){
+  var VARIATIONAL_URL = 'https://omni-client-api.prod.ap-northeast-1.variational.io/metadata/stats';
+  var LIGHTER_BASE = 'https://api.rh.lighter.xyz/api/v1';
+  var ENTRIES = [
+    { symbol: 'OPENAI', label: 'OPENAI' },
+    { symbol: 'ANTHROPIC', label: 'ANTHROPIC' }
+  ];
+
+  var assetsRoot = document.getElementById('assets');
+  var intervalSel = document.getElementById('intervalSel');
+  var refreshBtn = document.getElementById('refreshBtn');
+
+  function fmt(n, decimals){
+    if (n === null || n === undefined || isNaN(n)) return '–';
+    return Number(n).toLocaleString('en-US', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+  }
+  function decideDecimals(n){
+    if (n >= 100) return 2;
+    if (n >= 1) return 3;
+    return 5;
+  }
+  async function fetchJson(url){
+    var res = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' (' + url + ')');
+    return res.json();
+  }
+
+  function buildBlock(symbol, label){
+    var el = document.createElement('div');
+    el.className = 'asset-block';
+    el.innerHTML =
+      '<div class="top">' +
+        '<p class="asset">' + label + '</p>' +
+        '<div class="status"><span class="dot" data-role="dot"></span><span data-role="statusText">연결 중…</span></div>' +
+      '</div>' +
+      '<div class="err-box" data-role="errBox"></div>' +
+      '<div class="cards">' +
+        '<div class="card a">' +
+          '<div class="card-label"><span class="exch-name">Variational</span>' +
+            '<a href="https://omni.variational.io/perpetual/' + symbol + '" target="_blank" rel="noopener">Omni ↗</a></div>' +
+          '<div class="quote-row"><span class="quote-label">시장가 매수 체결가 (ask)</span><span class="quote-price ask" data-role="askA">–</span></div>' +
+          '<div class="quote-row"><span class="quote-label">시장가 매도 체결가 (bid)</span><span class="quote-price bid" data-role="bidA">–</span></div>' +
+          '<div class="quote-hint">$1,000 notional 기준</div>' +
+        '</div>' +
+        '<div class="card b">' +
+          '<div class="card-label"><span class="exch-name">Lighter</span>' +
+            '<a href="https://robinhoodchain.lighter.xyz/trade/' + symbol + '" target="_blank" rel="noopener">Lighter ↗</a></div>' +
+          '<div class="quote-row"><span class="quote-label">시장가 매수 체결가 (ask)</span><span class="quote-price ask" data-role="askB">–</span></div>' +
+          '<div class="quote-row"><span class="quote-label">시장가 매도 체결가 (bid)</span><span class="quote-price bid" data-role="bidB">–</span></div>' +
+          '<div class="quote-hint">호가창 최우선 체결가</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="spread-panel">' +
+        '<div class="spread-label">Variational 매수 → Lighter 매도</div>' +
+        '<div class="spread-value" data-role="spreadValueAB">–</div>' +
+        '<div class="spread-sub" data-role="spreadSubAB">가격을 불러오는 중…</div>' +
+        '<div class="spread-avg" data-role="spreadAvgAB"></div>' +
+      '</div>' +
+      '<div class="spread-panel" style="margin-top:12px;">' +
+        '<div class="spread-label">Lighter 매수 → Variational 매도</div>' +
+        '<div class="spread-value" data-role="spreadValueBA">–</div>' +
+        '<div class="spread-sub" data-role="spreadSubBA">가격을 불러오는 중…</div>' +
+        '<div class="spread-avg" data-role="spreadAvgBA"></div>' +
+      '</div>' +
+      '<div class="calc-panel">' +
+        '<div class="calc-title">진짜 갭 vs 왕복 거래비용 (mid price 기준)</div>' +
+        '<div class="gap-row">' +
+          '<span class="quote-label">진짜 갭 (mid 기준)</span>' +
+          '<span class="quote-price" data-role="trueGap">–</span>' +
+        '</div>' +
+        '<div class="gap-row">' +
+          '<span class="quote-label">왕복 거래비용 (양쪽 호가스프레드 합)</span>' +
+          '<span class="quote-price" data-role="roundTripCost">–</span>' +
+        '</div>' +
+        '<div class="gap-row" style="border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">' +
+          '<span class="quote-label">실질 순이익 가능성 (진짜갭 − 비용, 근사치)</span>' +
+          '<span class="quote-price" data-role="netEdge">–</span>' +
+        '</div>' +
+      '</div>';
+    return el;
+  }
+
+  function Monitor(symbol, root){
+    this.symbol = symbol;
+    this.root = root;
+    this.q = function(role){ return root.querySelector('[data-role="' + role + '"]'); };
+    this.historyAB = [];
+    this.historyBA = [];
+    this.fetching = false;
+    this.lighterMarketId = null;
+    this.lastV = null;
+    this.lastL = null;
+  }
+
+  Monitor.prototype.showError = function(msg){
+    this.q('errBox').style.display = 'block';
+    this.q('errBox').textContent = msg;
+    this.q('dot').className = 'dot err';
+    this.q('statusText').textContent = '오류';
+  };
+  Monitor.prototype.clearError = function(){
+    this.q('errBox').style.display = 'none';
+  };
+
+  Monitor.prototype.fetchVariational = async function(){
+    var data = await fetchJson(VARIATIONAL_URL);
+    var listing = null;
+    for (var i = 0; i < data.listings.length; i++){
+      if (data.listings[i].ticker === this.symbol){ listing = data.listings[i]; break; }
+    }
+    if (!listing) throw new Error('Variational: ' + this.symbol + ' 마켓 없음');
+    if (!listing.quotes || !listing.quotes.size_1k) throw new Error('Variational: 호가 데이터 없음');
+    return {
+      ask: parseFloat(listing.quotes.size_1k.ask),
+      bid: parseFloat(listing.quotes.size_1k.bid)
+    };
+  };
+
+  Monitor.prototype.resolveLighterMarketId = async function(){
+    var data = await fetchJson(LIGHTER_BASE + '/orderBookDetails');
+    for (var i = 0; i < data.order_book_details.length; i++){
+      if (data.order_book_details[i].symbol === this.symbol){
+        return data.order_book_details[i].market_id;
+      }
+    }
+    throw new Error('Lighter: ' + this.symbol + ' 마켓을 찾을 수 없음');
+  };
+
+  Monitor.prototype.fetchLighter = async function(){
+    if (this.lighterMarketId === null){
+      this.lighterMarketId = await this.resolveLighterMarketId();
+    }
+    var data;
+    try {
+      data = await fetchJson(LIGHTER_BASE + '/orderBookOrders?market_id=' + this.lighterMarketId + '&limit=10');
+    } catch (e) {
+      this.lighterMarketId = null;
+      throw e;
+    }
+    if (!data.asks || !data.asks.length || !data.bids || !data.bids.length){
+      throw new Error('Lighter: 호가창이 비어있음');
+    }
+    var bestAsk = Math.min.apply(null, data.asks.map(function(o){ return parseFloat(o.price); }));
+    var bestBid = Math.max.apply(null, data.bids.map(function(o){ return parseFloat(o.price); }));
+    return { ask: bestAsk, bid: bestBid };
+  };
+
+  Monitor.prototype.drawHistory = function(){};
+
+  Monitor.prototype.tick = async function(){
+    if (this.fetching) return;
+    this.fetching = true;
+    this.q('dot').className = 'dot';
+    this.q('statusText').textContent = '갱신 중…';
+    try {
+      var results = await Promise.all([this.fetchVariational(), this.fetchLighter()]);
+      var v = results[0], l = results[1];
+      this.lastV = v;
+      this.lastL = l;
+      this.clearError();
+
+      var decA = decideDecimals(v.ask);
+      this.q('askA').textContent = '$' + fmt(v.ask, decA);
+      this.q('bidA').textContent = '$' + fmt(v.bid, decA);
+
+      var decB = decideDecimals(l.bid);
+      this.q('askB').textContent = '$' + fmt(l.ask, decB);
+      this.q('bidB').textContent = '$' + fmt(l.bid, decB);
+
+      var spreadAB = ((l.bid - v.ask) / v.ask) * 100;
+      var diffAB = l.bid - v.ask;
+      var spreadBA = ((v.bid - l.ask) / l.ask) * 100;
+      var diffBA = v.bid - l.ask;
+
+      this.q('spreadValueAB').textContent = (spreadAB >= 0 ? '+' : '') + spreadAB.toFixed(3) + '%';
+      this.q('spreadValueAB').className = 'spread-value ' + (spreadAB > 0 ? 'up' : 'down');
+      this.q('spreadSubAB').innerHTML = 'Variational $' + fmt(v.ask, decA) + '에 매수, Lighter $' + fmt(l.bid, decB) + '에 매도 시 <b>$' + fmt(Math.abs(diffAB), decideDecimals(Math.abs(diffAB))) + '</b> ' + (diffAB >= 0 ? '차익' : '손실');
+
+      this.q('spreadValueBA').textContent = (spreadBA >= 0 ? '+' : '') + spreadBA.toFixed(3) + '%';
+      this.q('spreadValueBA').className = 'spread-value ' + (spreadBA > 0 ? 'up' : 'down');
+      this.q('spreadSubBA').innerHTML = 'Lighter $' + fmt(l.ask, decB) + '에 매수, Variational $' + fmt(v.bid, decA) + '에 매도 시 <b>$' + fmt(Math.abs(diffBA), decideDecimals(Math.abs(diffBA))) + '</b> ' + (diffBA >= 0 ? '차익' : '손실');
+
+      this.historyAB.push({ t: Date.now(), spread: spreadAB });
+      if (this.historyAB.length > 120) this.historyAB.shift();
+      this.historyBA.push({ t: Date.now(), spread: spreadBA });
+      if (this.historyBA.length > 120) this.historyBA.shift();
+      this.drawHistory('histAB', this.ctxAB, this.historyAB);
+      this.drawHistory('histBA', this.ctxBA, this.historyBA);
+
+      var sumAB = 0;
+      for (var i = 0; i < this.historyAB.length; i++) sumAB += this.historyAB[i].spread;
+      var avgAB = sumAB / this.historyAB.length;
+      this.q('spreadAvgAB').innerHTML = '세션 평균 (샘플 ' + this.historyAB.length + '개): <b>' + (avgAB >= 0 ? '+' : '') + avgAB.toFixed(3) + '%</b>';
+
+      var sumBA = 0;
+      for (var j = 0; j < this.historyBA.length; j++) sumBA += this.historyBA[j].spread;
+      var avgBA = sumBA / this.historyBA.length;
+      this.q('spreadAvgBA').innerHTML = '세션 평균 (샘플 ' + this.historyBA.length + '개): <b>' + (avgBA >= 0 ? '+' : '') + avgBA.toFixed(3) + '%</b>';
+
+      var midV = (v.ask + v.bid) / 2;
+      var midL = (l.ask + l.bid) / 2;
+      var trueGapPct = ((midL - midV) / midV) * 100;
+      var costV = ((v.ask - v.bid) / midV) * 100;
+      var costL = ((l.ask - l.bid) / midL) * 100;
+      var roundTripCostPct = costV + costL;
+      var netEdgePct = Math.abs(trueGapPct) - roundTripCostPct;
+
+      this.q('trueGap').textContent = (trueGapPct >= 0 ? '+' : '') + trueGapPct.toFixed(3) + '%';
+      this.q('trueGap').className = 'quote-price ' + (trueGapPct > 0 ? 'up' : (trueGapPct < 0 ? 'down' : ''));
+
+      this.q('roundTripCost').textContent = roundTripCostPct.toFixed(3) + '%';
+
+      this.q('netEdge').textContent = (netEdgePct >= 0 ? '+' : '') + netEdgePct.toFixed(3) + '%';
+      this.q('netEdge').className = 'quote-price ' + (netEdgePct > 0 ? 'up' : 'down');
+
+      this.q('dot').className = 'dot live';
+      this.q('statusText').textContent = '실시간';
+    } catch (e) {
+      var msg = String(e && e.message ? e.message : e);
+      if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1){
+        this.showError('거래소 API에 연결할 수 없습니다 (CORS 또는 네트워크 문제일 수 있음): ' + msg);
+      } else {
+        this.showError('데이터를 불러오는 중 오류: ' + msg);
+      }
+    } finally {
+      this.fetching = false;
+    }
+  };
+
+  var monitors = ENTRIES.map(function(entry){
+    var block = buildBlock(entry.symbol, entry.label);
+    assetsRoot.appendChild(block);
+    return new Monitor(entry.symbol, block);
+  });
+
+  var timer = null;
+  function tickAll(){
+    return Promise.all(monitors.map(function(m){ return m.tick(); }));
+  }
+  function scheduleNext(){
+    if (timer) clearTimeout(timer);
+    var ms = parseInt(intervalSel.value, 10);
+    timer = setTimeout(function(){ tickAll().then(scheduleNext); }, ms);
+  }
+
+  refreshBtn.addEventListener('click', function(){ tickAll(); });
+  intervalSel.addEventListener('change', function(){ scheduleNext(); });
+
+  tickAll().then(scheduleNext);
+})();
+</script>
+</body>
+</html>
